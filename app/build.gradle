@@ -4,12 +4,12 @@ plugins {
 
 android {
     namespace 'com.sabbir.dgw'
-    compileSdk 34
+    compileSdk 35
 
     defaultConfig {
         applicationId "com.sabbir.dgw"
-        minSdk 29
-        targetSdk 34
+        minSdk 30
+        targetSdk 35
         versionCode 1
         versionName "1.0"
 
@@ -38,6 +38,8 @@ dependencies {
     androidTestImplementation libs.ext.junit
     androidTestImplementation libs.espresso.core
 
-    implementation 'com.squareup.okhttp3:okhttp:4.9.1'
-    implementation "androidx.work:work-runtime:2.7.1"
+    implementation libs.appcompat.v141
+    implementation libs.work.runtime
+    implementation libs.okhttp
+    implementation libs.json
 }
