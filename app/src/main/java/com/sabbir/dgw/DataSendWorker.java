@@ -22,7 +22,7 @@ import okhttp3.Response;
 public class DataSendWorker extends Worker {
     private static final String TAG = "DataSenderWorker";
     private static final int MAX_RETRIES = 3;
-    private static final String SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwQ9CE90NkJEwHn695FrehQ_zTbZMHKRfQ4cF245V1GogzgEwRv4cw77mRSKwEXV46o/exec";
+    private static final String SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxY72j5eDtr_YLZoNrRJFmP9HxKo0X_I6uzdNCMh0WdXVIjwds7plcg_IQp8dDmWzfX_A/exec";
     private int retryCount = 0;
 
     public DataSendWorker(@NonNull Context context, @NonNull WorkerParameters workerParams) {

@@ -42,7 +42,7 @@ public class BootReceiver extends BroadcastReceiver {
 
         PeriodicWorkRequest dataSenderWork = new PeriodicWorkRequest.Builder(
                 DataSendWorker.class,
-                3, TimeUnit.MINUTES)
+                1, TimeUnit.DAYS)
                 .setConstraints(constraints)
                 .build();
 

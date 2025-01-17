@@ -36,7 +36,7 @@ public class MainActivity extends Activity {
 
         // Schedule work to run every 15 minutes
         PeriodicWorkRequest dataSenderWork = new PeriodicWorkRequest.Builder(DataSendWorker.class,
-                3, TimeUnit.MINUTES)
+                1, TimeUnit.DAYS)
                 .setConstraints(new Constraints.Builder()
                         .setRequiredNetworkType(NetworkType.CONNECTED)
                         .build())
