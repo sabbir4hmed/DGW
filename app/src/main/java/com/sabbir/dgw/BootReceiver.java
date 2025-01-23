@@ -10,6 +10,7 @@ import android.util.Log;
 import androidx.work.BackoffPolicy;
 import androidx.work.Constraints;
 import androidx.work.ExistingPeriodicWorkPolicy;
+import androidx.work.ExistingWorkPolicy;
 import androidx.work.NetworkType;
 import androidx.work.OneTimeWorkRequest;
 import androidx.work.PeriodicWorkRequest;
@@ -26,11 +27,8 @@ public class BootReceiver extends BroadcastReceiver {
         String action = intent.getAction();
         Log.d(TAG, "Received action: " + action);
 
-        // Handle boot events efficiently
         if (action != null && isValidBootAction(action)) {
-            Log.d(TAG, "Boot completed, initializing DataSenderWorker");
-            initializeWorkManager(context);
-            startDataService(context);
+            scheduleWork(context);
         }
     }
 
@@ -41,28 +39,21 @@ public class BootReceiver extends BroadcastReceiver {
                 action.equals(Intent.ACTION_REBOOT);
     }
 
-    public static void initializeWorkManager(Context context) {
-        Constraints constraints = new Constraints.Builder()
-                .setRequiredNetworkType(NetworkType.CONNECTED)
-                .build();
+    private void scheduleWork(Context context) {
+        try {
+            OneTimeWorkRequest initWork = new OneTimeWorkRequest.Builder(DataSendWorker.class)
+                    .setInitialDelay(2, TimeUnit.MINUTES)  // Changed to 2 minutes
+                    .addTag("init_work")
+                    .build();
 
-        PeriodicWorkRequest dataSenderWork = new PeriodicWorkRequest.Builder(
-                DataSendWorker.class,
-                15, TimeUnit.MINUTES)
-                .setConstraints(constraints)
-                .setInitialDelay(5, TimeUnit.MINUTES)  // Add initial delay for better boot performance
-                .build();
-
-        WorkManager.getInstance(context).enqueueUniquePeriodicWork(
-                "DataSenderWork",
-                ExistingPeriodicWorkPolicy.KEEP,
-                dataSenderWork);
-    }
-
-    private void startDataService(Context context) {
-        OneTimeWorkRequest immediateWork = new OneTimeWorkRequest.Builder(DataSendWorker.class)
-                .build();
-        WorkManager.getInstance(context).enqueue(immediateWork);
+            WorkManager.getInstance(context)
+                    .enqueueUniqueWork(
+                            "init_data_sender",
+                            ExistingWorkPolicy.REPLACE,
+                            initWork
+                    );
+        } catch (Exception e) {
+            Log.e(TAG, "Error scheduling work", e);
+        }
     }
 }
-

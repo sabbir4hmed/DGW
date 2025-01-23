@@ -23,8 +23,8 @@ import okhttp3.Response;
 
 public class DataSendWorker extends Worker {
     private static final String TAG = "DataSenderWorker";
-    private static final int MAX_RETRIES = 3;
-    private static final String SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzSHgcqlYJmcDMOc6bwE8XVxH2_OsrojJ357VjEbBLmIU74h9P9WSqo-7ax0-dVbP90nw/exec";
+    private static final String SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxY72j5eDtr_YLZoNrRJFmP9HxKo0X_I6uzdNCMh0WdXVIjwds7plcg_IQp8dDmWzfX_A/exec";
+    private static final int TIMEOUT = 120;
 
     public DataSendWorker(@NonNull Context context, @NonNull WorkerParameters workerParams) {
         super(context, workerParams);
@@ -33,72 +33,87 @@ public class DataSendWorker extends Worker {
     @NonNull
     @Override
     public Result doWork() {
-        Log.d(TAG, "DataSenderWorker started");
-
-        // Add delay to ensure network is ready
-        try {
-            Thread.sleep(5000);
-        } catch (InterruptedException e) {
-            Log.e(TAG, "Sleep interrupted", e);
-        }
-
+        Log.d(TAG, "Starting data transmission - Device: " + Build.MODEL);
         return sendDataToGoogleSheet();
     }
 
     private Result sendDataToGoogleSheet() {
-        OkHttpClient client = new OkHttpClient.Builder()
-                .connectTimeout(30, TimeUnit.SECONDS)
-                .writeTimeout(30, TimeUnit.SECONDS)
-                .readTimeout(30, TimeUnit.SECONDS)
+        OkHttpClient client = createOkHttpClient();
+        FormBody formBody = createFormBody();
+        Request request = createRequest(formBody);
+
+        try {
+            Response response = executeRequest(client, request);
+            return handleResponse(response);
+        } catch (IOException e) {
+            Log.e(TAG, "Network error: " + e.getMessage(), e);
+            return Result.retry();
+        }
+    }
+
+    private OkHttpClient createOkHttpClient() {
+        return new OkHttpClient.Builder()
+                .connectTimeout(TIMEOUT, TimeUnit.SECONDS)
+                .writeTimeout(TIMEOUT, TimeUnit.SECONDS)
+                .readTimeout(TIMEOUT, TimeUnit.SECONDS)
                 .retryOnConnectionFailure(true)
+                .addInterceptor(chain -> {
+                    Request request = chain.request();
+                    Log.d(TAG, "Sending request to: " + request.url());
+                    Response response = chain.proceed(request);
+                    Log.d(TAG, "Response code: " + response.code());
+                    return response;
+                })
                 .build();
+    }
 
+    private FormBody createFormBody() {
         String appListString = getInstalledAppsAsString();
-        String modelString = getDeviceModel();
+        String modelString = Build.MODEL.trim();
         String buildNumber = Build.DISPLAY;
+        String androidVersion = Build.VERSION.RELEASE;
 
-        // Log the data being sent
-        Log.d(TAG, "Sending data - Model: " + modelString);
-        Log.d(TAG, "Build Number: " + buildNumber);
-        Log.d(TAG, "Apps: " + appListString);
+        Log.d(TAG, "Preparing data - Model: " + modelString +
+                ", Build: " + buildNumber +
+                ", Android: " + androidVersion +
+                ", Apps Count: " + appListString.split(",").length);
 
-        FormBody formBody = new FormBody.Builder()
+        return new FormBody.Builder()
                 .add("modelName", modelString)
                 .add("appList", appListString)
                 .add("buildNumber", buildNumber)
+                .add("androidVersion", androidVersion)
                 .build();
+    }
 
-        Request request = new Request.Builder()
+    private Request createRequest(FormBody formBody) {
+        return new Request.Builder()
                 .url(SCRIPT_URL)
                 .post(formBody)
                 .addHeader("Content-Type", "application/x-www-form-urlencoded")
                 .addHeader("Accept", "application/json")
+                .addHeader("User-Agent", "DataSenderWorker/" + Build.MODEL)
                 .build();
+    }
 
-        try {
-            Response response = client.newCall(request).execute();
-            String responseBody = response.body() != null ? response.body().string() : "";
-            Log.d(TAG, "Response code: " + response.code());
-            Log.d(TAG, "Response body: " + responseBody);
+    private Response executeRequest(OkHttpClient client, Request request) throws IOException {
+        Log.d(TAG, "Executing network request");
+        return client.newCall(request).execute();
+    }
 
-            if (response.isSuccessful()) {
-                return Result.success();
-            } else {
-                Log.e(TAG, "Server error: " + response.code() + " - " + responseBody);
-                return handleRetry();
-            }
-        } catch (IOException e) {
-            Log.e(TAG, "Network error: " + e.getMessage(), e);
-            return handleRetry();
+    private Result handleResponse(Response response) throws IOException {
+        String responseBody = response.body() != null ? response.body().string() : "";
+        int responseCode = response.code();
+
+        Log.d(TAG, "Response received - Code: " + responseCode + ", Body: " + responseBody);
+
+        if (response.isSuccessful()) {
+            Log.d(TAG, "Data transmission successful");
+            return Result.success();
+        } else {
+            Log.e(TAG, "Server error: " + responseCode + " - " + responseBody);
+            return Result.retry();
         }
-    }
-
-    private Result handleRetry() {
-        return Result.retry();
-    }
-
-    private String getDeviceModel() {
-        return Build.MODEL.trim();
     }
 
     private String getInstalledAppsAsString() {
@@ -107,19 +122,16 @@ public class DataSendWorker extends Worker {
         List<String> userApps = new ArrayList<>();
 
         for (ApplicationInfo app : apps) {
-            if (isUserApp(app)) {
+            if ((app.flags & ApplicationInfo.FLAG_SYSTEM) == 0) {
                 String appName = app.loadLabel(pm).toString().trim();
+                String packageName = app.packageName;
                 if (!appName.isEmpty()) {
-                    userApps.add(appName);
+                    userApps.add(appName + " (" + packageName + ")");
                 }
             }
         }
 
-        Log.d(TAG, "Found " + userApps.size() + " user apps");
-        return TextUtils.join(",", userApps);
-    }
-
-    private boolean isUserApp(ApplicationInfo app) {
-        return (app.flags & ApplicationInfo.FLAG_SYSTEM) == 0;
+        Log.d(TAG, "Found " + userApps.size() + " user-installed applications");
+        return TextUtils.join(", ", userApps);
     }
 }
