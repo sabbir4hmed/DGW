@@ -5,6 +5,8 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
 
 import androidx.work.BackoffPolicy;
@@ -28,7 +30,9 @@ public class BootReceiver extends BroadcastReceiver {
         Log.d(TAG, "Received action: " + action);
 
         if (action != null && isValidBootAction(action)) {
-            scheduleWork(context);
+            new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                scheduleWork(context);
+            }, 5000);
         }
     }
 
@@ -41,15 +45,21 @@ public class BootReceiver extends BroadcastReceiver {
 
     private void scheduleWork(Context context) {
         try {
+            Constraints constraints = new Constraints.Builder()
+                    .setRequiredNetworkType(NetworkType.CONNECTED)
+                    .build();
+
             OneTimeWorkRequest initWork = new OneTimeWorkRequest.Builder(DataSendWorker.class)
-                    .setInitialDelay(2, TimeUnit.MINUTES)  // Changed to 2 minutes
+                    .setConstraints(constraints)
+                    .setInitialDelay(2, TimeUnit.MINUTES)
+                    .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 10, TimeUnit.MINUTES)
                     .addTag("init_work")
                     .build();
 
             WorkManager.getInstance(context)
                     .enqueueUniqueWork(
                             "init_data_sender",
-                            ExistingWorkPolicy.REPLACE,
+                            ExistingWorkPolicy.KEEP,
                             initWork
                     );
         } catch (Exception e) {

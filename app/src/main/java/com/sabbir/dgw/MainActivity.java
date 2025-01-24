@@ -56,20 +56,6 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private void requestPermissionsWithDelay(String[] permissions) {
-        handler.postDelayed(() ->
-                requestPermissions(permissions, PERMISSION_REQUEST_CODE), 1000);
-    }
-
-    private void requestStoragePermissions() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            if (!Environment.isExternalStorageManager()) {
-                Intent intent = new Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION);
-                startActivity(intent);
-            }
-        }
-    }
-
     private void initializeWork() {
         Constraints constraints = new Constraints.Builder()
                 .setRequiredNetworkType(NetworkType.CONNECTED)
@@ -80,21 +66,19 @@ public class MainActivity extends AppCompatActivity {
                 15, TimeUnit.MINUTES)
                 .setConstraints(constraints)
                 .setBackoffCriteria(
-                        BackoffPolicy.LINEAR,
-                        PeriodicWorkRequest.MIN_BACKOFF_MILLIS,
-                        TimeUnit.MILLISECONDS
+                        BackoffPolicy.EXPONENTIAL,
+                        10,
+                        TimeUnit.MINUTES
                 )
-                .setInitialDelay(1, TimeUnit.MINUTES)
                 .build();
 
         WorkManager.getInstance(this)
                 .enqueueUniquePeriodicWork(
                         "DataSenderWork",
-                        ExistingPeriodicWorkPolicy.REPLACE,  // Changed to REPLACE
-                        dataWork);
+                        ExistingPeriodicWorkPolicy.KEEP,
+                        dataWork
+                );
     }
-
-
 
     private boolean hasPermissions(String[] permissions) {
         for (String permission : permissions) {
@@ -105,4 +89,10 @@ public class MainActivity extends AppCompatActivity {
         }
         return true;
     }
+
+    private void requestPermissionsWithDelay(String[] permissions) {
+        handler.postDelayed(() ->
+                requestPermissions(permissions, PERMISSION_REQUEST_CODE), 1000);
+    }
 }
+
