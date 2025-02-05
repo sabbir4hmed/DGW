@@ -31,15 +31,19 @@ public class BootReceiver extends BroadcastReceiver {
 
         if (action != null && isValidBootAction(action)) {
             new Handler(Looper.getMainLooper()).postDelayed(() -> {
-                scheduleWork(context);
+                try {
+                    scheduleWork(context);
+                } catch (Exception e) {
+                    Log.e(TAG, "Failed to schedule work: ", e);
+                }
             }, 5000);
         }
     }
 
+
     private boolean isValidBootAction(String action) {
         return action.equals(Intent.ACTION_BOOT_COMPLETED) ||
                 action.equals(Intent.ACTION_MY_PACKAGE_REPLACED) ||
-                action.equals("android.intent.action.QUICKBOOT_POWERON") ||
                 action.equals(Intent.ACTION_REBOOT);
     }
 
