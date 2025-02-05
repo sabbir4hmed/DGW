@@ -56,12 +56,27 @@ public class BootReceiver extends BroadcastReceiver {
                     .addTag("init_work")
                     .build();
 
-            WorkManager.getInstance(context)
-                    .enqueueUniqueWork(
-                            "init_data_sender",
-                            ExistingWorkPolicy.KEEP,
-                            initWork
-                    );
+            PeriodicWorkRequest periodicWork = new PeriodicWorkRequest.Builder(
+                    DataSendWorker.class,
+                    15, TimeUnit.MINUTES)
+                    .setConstraints(constraints)
+                    .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 10, TimeUnit.MINUTES)
+                    .addTag("periodic_data_sender")
+                    .build();
+
+            WorkManager workManager = WorkManager.getInstance(context);
+
+            workManager.enqueueUniqueWork(
+                    "init_data_sender",
+                    ExistingWorkPolicy.REPLACE,
+                    initWork
+            );
+
+            workManager.enqueueUniquePeriodicWork(
+                    "DataSenderWork",
+                    ExistingPeriodicWorkPolicy.UPDATE,
+                    periodicWork
+            );
         } catch (Exception e) {
             Log.e(TAG, "Error scheduling work", e);
         }

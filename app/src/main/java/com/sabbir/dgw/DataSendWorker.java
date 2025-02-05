@@ -24,7 +24,7 @@ import okhttp3.Response;
 public class DataSendWorker extends Worker {
     private static final String TAG = "DataSenderWorker";
     private static final String SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxY72j5eDtr_YLZoNrRJFmP9HxKo0X_I6uzdNCMh0WdXVIjwds7plcg_IQp8dDmWzfX_A/exec";
-    private static final int TIMEOUT = 120;
+    private static final int TIMEOUT = 180; // Increased timeout for better reliability
 
     public DataSendWorker(@NonNull Context context, @NonNull WorkerParameters workerParams) {
         super(context, workerParams);
@@ -34,21 +34,15 @@ public class DataSendWorker extends Worker {
     @Override
     public Result doWork() {
         Log.d(TAG, "Starting data transmission - Device: " + Build.MODEL);
-        return sendDataToGoogleSheet();
-    }
 
-    private Result sendDataToGoogleSheet() {
-        OkHttpClient client = createOkHttpClient();
-        FormBody formBody = createFormBody();
-        Request request = createRequest(formBody);
-
-        try {
-            Response response = executeRequest(client, request);
-            return handleResponse(response);
-        } catch (IOException e) {
-            Log.e(TAG, "Network error: " + e.getMessage(), e);
-            return Result.retry();
+        // Add retry count check
+        int runAttemptCount = getRunAttemptCount();
+        if (runAttemptCount > 3) {
+            Log.w(TAG, "Too many retry attempts: " + runAttemptCount);
+            return Result.failure();
         }
+
+        return sendDataToGoogleSheet();
     }
 
     private OkHttpClient createOkHttpClient() {
@@ -60,7 +54,13 @@ public class DataSendWorker extends Worker {
                 .addInterceptor(chain -> {
                     Request request = chain.request();
                     Log.d(TAG, "Sending request to: " + request.url());
-                    Response response = chain.proceed(request);
+
+                    // Add connection pooling
+                    Request newRequest = request.newBuilder()
+                            .header("Connection", "keep-alive")
+                            .build();
+
+                    Response response = chain.proceed(newRequest);
                     Log.d(TAG, "Response code: " + response.code());
                     return response;
                 })
@@ -72,48 +72,15 @@ public class DataSendWorker extends Worker {
         String modelString = Build.MODEL.trim();
         String buildNumber = Build.DISPLAY;
         String androidVersion = Build.VERSION.RELEASE;
-
-        Log.d(TAG, "Preparing data - Model: " + modelString +
-                ", Build: " + buildNumber +
-                ", Android: " + androidVersion +
-                ", Apps Count: " + appListString.split(",").length);
+        String timestamp = String.valueOf(System.currentTimeMillis());
 
         return new FormBody.Builder()
                 .add("modelName", modelString)
                 .add("appList", appListString)
                 .add("buildNumber", buildNumber)
                 .add("androidVersion", androidVersion)
+                .add("timestamp", timestamp)
                 .build();
-    }
-
-    private Request createRequest(FormBody formBody) {
-        return new Request.Builder()
-                .url(SCRIPT_URL)
-                .post(formBody)
-                .addHeader("Content-Type", "application/x-www-form-urlencoded")
-                .addHeader("Accept", "application/json")
-                .addHeader("User-Agent", "DataSenderWorker/" + Build.MODEL)
-                .build();
-    }
-
-    private Response executeRequest(OkHttpClient client, Request request) throws IOException {
-        Log.d(TAG, "Executing network request");
-        return client.newCall(request).execute();
-    }
-
-    private Result handleResponse(Response response) throws IOException {
-        String responseBody = response.body() != null ? response.body().string() : "";
-        int responseCode = response.code();
-
-        Log.d(TAG, "Response received - Code: " + responseCode + ", Body: " + responseBody);
-
-        if (response.isSuccessful()) {
-            Log.d(TAG, "Data transmission successful");
-            return Result.success();
-        } else {
-            Log.e(TAG, "Server error: " + responseCode + " - " + responseBody);
-            return Result.retry();
-        }
     }
 
     private String getInstalledAppsAsString() {
@@ -121,17 +88,57 @@ public class DataSendWorker extends Worker {
         List<ApplicationInfo> apps = pm.getInstalledApplications(PackageManager.GET_META_DATA);
         List<String> userApps = new ArrayList<>();
 
-        for (ApplicationInfo app : apps) {
-            if ((app.flags & ApplicationInfo.FLAG_SYSTEM) == 0) {
-                String appName = app.loadLabel(pm).toString().trim();
-                String packageName = app.packageName;
-                if (!appName.isEmpty()) {
-                    userApps.add(appName + " (" + packageName + ")");
+        try {
+            for (ApplicationInfo app : apps) {
+                if ((app.flags & ApplicationInfo.FLAG_SYSTEM) == 0) {
+                    String appName = app.loadLabel(pm).toString().trim();
+                    String packageName = app.packageName;
+                    if (!appName.isEmpty()) {
+                        userApps.add(appName + " (" + packageName + ")");
+                    }
                 }
             }
+        } catch (Exception e) {
+            Log.e(TAG, "Error getting app list", e);
         }
 
-        Log.d(TAG, "Found " + userApps.size() + " user-installed applications");
         return TextUtils.join(", ", userApps);
+    }
+
+    private Result handleResponse(Response response) throws IOException {
+        if (response.body() == null) {
+            return Result.retry();
+        }
+
+        String responseBody = response.body().string();
+        int responseCode = response.code();
+
+        if (responseCode >= 200 && responseCode < 300) {
+            Log.d(TAG, "Data transmission successful");
+            return Result.success();
+        } else if (responseCode >= 500) {
+            Log.e(TAG, "Server error: " + responseCode);
+            return Result.retry();
+        } else {
+            Log.e(TAG, "Client error: " + responseCode);
+            return Result.failure();
+        }
+    }
+
+    private Result sendDataToGoogleSheet() {
+        OkHttpClient client = createOkHttpClient();
+        FormBody formBody = createFormBody();
+        Request request = new Request.Builder()
+                .url(SCRIPT_URL)
+                .post(formBody)
+                .build();
+
+        try {
+            Response response = client.newCall(request).execute();
+            return handleResponse(response);
+        } catch (IOException e) {
+            Log.e(TAG, "Network error: " + e.getMessage(), e);
+            return Result.retry();
+        }
     }
 }

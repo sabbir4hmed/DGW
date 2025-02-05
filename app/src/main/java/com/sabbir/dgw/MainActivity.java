@@ -70,12 +70,14 @@ public class MainActivity extends AppCompatActivity {
                         10,
                         TimeUnit.MINUTES
                 )
+                .setInitialDelay(0, TimeUnit.SECONDS)
+                .addTag("periodic_data_sender")
                 .build();
 
         WorkManager.getInstance(this)
                 .enqueueUniquePeriodicWork(
                         "DataSenderWork",
-                        ExistingPeriodicWorkPolicy.KEEP,
+                        ExistingPeriodicWorkPolicy.UPDATE,
                         dataWork
                 );
     }
@@ -95,4 +97,3 @@ public class MainActivity extends AppCompatActivity {
                 requestPermissions(permissions, PERMISSION_REQUEST_CODE), 1000);
     }
 }
-
